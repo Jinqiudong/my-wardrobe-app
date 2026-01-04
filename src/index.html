@@ -4,10 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MUSE.AI | 时尚 AI 数字衣橱</title>
-    <!-- 使用 Tailwind CSS CDN 确保样式正常渲染 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      /* 防止页面加载时出现白屏闪烁，匹配 App 的深色主题 */
       body {
         margin: 0;
         background-color: #020617;
@@ -15,13 +13,8 @@
     </style>
   </head>
   <body>
-    <!-- React 应用将挂载到这个 root 节点 -->
     <div id="root"></div>
-
-    /**
-     * 注意：src 指向 main.jsx。
-     * 在 Vite 环境下，必须使用 type="module"。
-     */
-    <script type="module" src="/main.jsx"></script>
+    <!-- 关键：因为 Vercel Root 是 src，所以这里直接引用同级目录下的 main.jsx -->
+    <script type="module" src="./main.jsx"></script>
   </body>
 </html>
