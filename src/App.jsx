@@ -1,47 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { auth, db, APP_ID, isFirebaseValid } from './services/firebase.js';
+import { analyzeClothingImage } from './services/gemini.js';
 import {
   CloudSun, MapPin, Trash2, Plus, Sparkles, User,
   Layers, Zap, Camera, ChevronRight, X, Heart, Scan, Filter, History,
   Loader2, AlertCircle
 } from 'lucide-react';
-
-// --- 安全获取环境变量 ---
-const getEnv = (key) => {
-  try {
-    return import.meta.env[key] || '';
-  } catch (e) {
-    return '';
-  }
-};
-
-const firebaseConfig = {
-  apiKey: getEnv('VITE_FIREBASE_API_KEY'),
-  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-  projectId: getEnv('VITE_FIREBASE_PROJECT_ID'),
-  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || getEnv('VITE_FIREBASE_MESSAGE_SENDER_ID'),
-  appId: getEnv('VITE_FIREBASE_APP_ID')
-};
-
-const GEMINI_API_KEY = getEnv('VITE_GEMINI_API_KEY') || getEnv('GEMINI_API_KEY');
-const APP_ID = getEnv('VITE_FIREBASE_PROJECT_ID') || 'my-wardrobe-app-default';
-
-// 安全初始化 Firebase
-let auth, db;
-const isFirebaseValid = !!firebaseConfig.apiKey;
-
-if (isFirebaseValid) {
-  try {
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.error("Firebase 初始化失败:", e);
-  }
-}
 
 export default function App() {
   const [user, setUser] = useState(null);
