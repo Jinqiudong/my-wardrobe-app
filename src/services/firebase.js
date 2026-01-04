@@ -16,11 +16,10 @@ const firebaseConfig = {
   authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
   projectId: getEnv('FIREBASE_PROJECT_ID'),
   storageBucket: getEnv('FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID'),
+  messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID') || getEnv('FIREBASE_MESSAGE_SENDER_ID'),
   appId: getEnv('FIREBASE_APP_ID')
 };
 
-// 检查配置是否有效
 export const isFirebaseValid = !!firebaseConfig.apiKey && firebaseConfig.apiKey !== '';
 
 let app, auth, db;
@@ -30,10 +29,13 @@ if (isFirebaseValid) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
     db = getFirestore(app);
+    console.log("Firebase 模块加载成功");
   } catch (e) {
     console.error("Firebase 核心初始化失败:", e);
   }
+} else {
+  console.warn("Firebase 配置缺失，应用将运行在离线/演示模式");
 }
 
-export { auth, db };
-export const APP_ID = firebaseConfig.projectId || 'muse-ai-default';
+export { auth, db, firebaseConfig }; // 导出配置对象以备调试使用
+export const APP_ID = firebaseConfig.projectId || 'my-wardrobe-app';

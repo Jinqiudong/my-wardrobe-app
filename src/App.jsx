@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { auth, db, APP_ID, isFirebaseValid } from './services/firebase.js';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { auth, db, APP_ID, isFirebaseValid } from './services/firebase.js';
 import { analyzeClothingImage } from './services/gemini.js';
 import {
   CloudSun, MapPin, Trash2, Plus, Sparkles, User,
@@ -23,66 +23,84 @@ export default function App() {
   const [weather, setWeather] = useState({ temp: '--', condition: '加载中...', city: '自动定位' });
   const [weatherLoading, setWeatherLoading] = useState(true);
 
-  // 1. 初始化鉴权
+  // 1. 处理 Firebase 匿名登录
   useEffect(() => {
-    if (!auth) return;
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUser(u);
+    if (!isFirebaseValid || !auth) return;
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
       } else {
-        signInAnonymously(auth).catch(e => console.error("匿名登录失败:", e));
+        signInAnonymously(auth).catch((error) => {
+          console.error("Firebase 匿名登录失败:", error);
+        });
       }
     });
-    return () => unsub();
+
+    return () => unsubscribe();
   }, []);
 
-  // 2. 获取天气
+  // 2. 实时监听衣橱数据
+  useEffect(() => {
+    if (!user || !db) return;
+
+    // 遵循路径规则: /artifacts/{appId}/users/{userId}/items
+    const itemsCollection = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'items');
+
+    const unsubscribe = onSnapshot(itemsCollection, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setWardrobe(items);
+    }, (error) => {
+      console.error("Firestore 监听错误:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 3. 获取天气 (Open-Meteo)
   useEffect(() => {
     const fetchWeather = async (lat, lon) => {
       try {
         const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
         const data = await response.json();
-        const weatherCodes = {
-          0: '晴朗', 1: '晴间多云', 2: '阴天', 3: '多云', 45: '雾', 48: '雾',
-          51: '毛毛雨', 61: '小雨', 71: '小雪', 95: '雷阵雨'
-        };
         setWeather({
           temp: Math.round(data.current_weather.temperature),
-          condition: weatherCodes[data.current_weather.weathercode] || '多云',
+          condition: '晴朗',
           city: '当前位置'
         });
-      } catch (error) {
-        setWeather(prev => ({ ...prev, condition: '获取失败' }));
+      } catch (e) {
+        console.error("天气获取失败");
       } finally {
         setWeatherLoading(false);
       }
     };
 
-    if ("geolocation" in navigator) {
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (p) => fetchWeather(p.coords.latitude, p.coords.longitude),
         () => fetchWeather(31.23, 121.47)
       );
-    } else {
-      fetchWeather(31.23, 121.47);
     }
   }, []);
 
-  // 3. 数据实时同步 (Firestore 路径需严格遵循规则)
-  useEffect(() => {
-    if (!user || !db) return;
-    const itemsPath = `artifacts/${APP_ID}/users/${user.uid}/items`;
-    const q = collection(db, itemsPath);
-
-    const unsubWardrobe = onSnapshot(q, (s) => {
-      setWardrobe(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => console.error("Firestore 同步错误:", err));
-
-    return () => unsubWardrobe();
-  }, [user]);
-
-  // AI 逻辑与视图渲染省略 (保持之前逻辑)...
-  const generateOutfit = async () => { /* ...保持不变... */ };
+//   // 3. 数据实时同步 (Firestore 路径需严格遵循规则)
+//   useEffect(() => {
+//     if (!user || !db) return;
+//     const itemsPath = `artifacts/${APP_ID}/users/${user.uid}/items`;
+//     const q = collection(db, itemsPath);
+//
+//     const unsubWardrobe = onSnapshot(q, (s) => {
+//       setWardrobe(s.docs.map(d => ({ id: d.id, ...d.data() })));
+//     }, (err) => console.error("Firestore 同步错误:", err));
+//
+//     return () => unsubWardrobe();
+//   }, [user]);
+//
+//   // AI 逻辑与视图渲染省略 (保持之前逻辑)...
+//   const generateOutfit = async () => { /* ...保持不变... */ };
 
   // --- 配置缺失时显示的诊断 UI ---
   if (!isFirebaseValid || !GEMINI_API_KEY) {
