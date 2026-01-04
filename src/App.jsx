@@ -9,6 +9,9 @@ import {
   Loader2, AlertCircle
 } from 'lucide-react';
 
+// --- DEBUG LOG ---
+console.log("DEBUG: App.jsx 文件已开始解析");
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('home');
