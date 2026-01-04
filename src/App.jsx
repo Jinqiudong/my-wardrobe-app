@@ -100,10 +100,15 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
-  // 滚动到底部
+  // 自动滚动到底部逻辑优化
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [messages, isAiTyping]);
 
   // 2. 中央大脑编排逻辑 (The Orchestrator)
   const askAura = async (userInput) => {
@@ -150,9 +155,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans selection:bg-indigo-500/30">
+    <div className="h-screen bg-[#020617] text-white flex flex-col font-sans selection:bg-indigo-500/30 overflow-hidden">
       {/* 顶部状态栏 */}
-      <header className="px-6 py-6 flex justify-between items-center max-w-2xl mx-auto w-full border-b border-white/5">
+      <header className="px-6 py-6 flex justify-between items-center max-w-2xl mx-auto w-full border-b border-white/5 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-600 rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.4)]">
             <BrainCircuit size={20} />
@@ -175,11 +180,11 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 px-6 pb-28 max-w-2xl mx-auto w-full flex flex-col min-h-0">
+      <main className="flex-1 px-6 max-w-2xl mx-auto w-full flex flex-col min-h-0 relative overflow-hidden">
         {activeTab === 'chat' && (
-          <div className="flex flex-col h-full py-4">
-            {/* 智能体看板 */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="flex flex-col h-full py-4 min-h-0">
+            {/* 智能体看板 - 固定在顶部 */}
+            <div className="grid grid-cols-2 gap-3 mb-4 flex-shrink-0">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
                     <div className="flex items-center gap-2 text-indigo-400 mb-1">
                         <CloudSun size={14} />
@@ -196,8 +201,11 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 对话窗口 */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto mb-4 space-y-4 pr-1 custom-scrollbar">
+            {/* 对话窗口 - 必须设为 flex-1 和 overflow-y-auto */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar scroll-smooth mb-2"
+            >
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
                   <div className={`max-w-[90%] p-4 rounded-3xl text-sm leading-relaxed ${
@@ -213,18 +221,20 @@ export default function App() {
                     <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Orchestrating Agents...</span>
                 </div>
               )}
+              {/* 用于确保滚动到底部的空白占位 */}
+              <div className="h-4" />
             </div>
 
-            {/* 输入组件 */}
-            <div className="relative mt-auto">
+            {/* 输入组件 - 固定在底部 */}
+            <div className="relative mt-auto pt-2 pb-24 flex-shrink-0 bg-[#020617]">
               <input
                 value={inputMsg}
                 onChange={e => setInputMsg(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
                 placeholder="询问 AURA 关于穿搭、天气或衣橱..."
-                className="w-full bg-white/5 border border-white/10 rounded-3xl py-6 px-8 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600"
+                className="w-full bg-white/5 border border-white/10 rounded-3xl py-6 px-8 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl"
               />
-              <button onClick={handleSend} className="absolute right-3 top-3 p-4 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
+              <button onClick={handleSend} className="absolute right-3 top-5 p-4 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
                 <Send size={18} />
               </button>
             </div>
@@ -232,8 +242,8 @@ export default function App() {
         )}
 
         {activeTab === 'wardrobe' && (
-          <div className="py-6 space-y-4 overflow-y-auto custom-scrollbar">
-             <div className="flex justify-between items-end mb-4">
+          <div className="h-full py-6 pb-28 space-y-4 overflow-y-auto custom-scrollbar">
+             <div className="flex justify-between items-end mb-4 flex-shrink-0">
                 <h2 className="text-2xl font-black italic tracking-tighter uppercase">Vault</h2>
                 <button className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-colors"><Plus size={20}/></button>
              </div>
@@ -257,15 +267,15 @@ export default function App() {
       </main>
 
       {/* 底部导航 */}
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xs px-4">
-        <div className="bg-slate-900/90 backdrop-blur-2xl border border-white/10 p-2 rounded-full flex justify-between shadow-2xl">
-          <button onClick={() => setActiveTab('chat')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'chat' ? 'bg-indigo-600 shadow-lg shadow-indigo-600/40' : 'text-slate-500 hover:text-slate-300'}`}>
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xs px-4 z-50">
+        <div className="bg-slate-900/95 backdrop-blur-3xl border border-white/10 p-2 rounded-full flex justify-between shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+          <button onClick={() => setActiveTab('chat')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'chat' ? 'bg-indigo-600 shadow-lg shadow-indigo-600/40 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
             <MessageSquare size={20} />
           </button>
-          <button onClick={() => setActiveTab('wardrobe')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'wardrobe' ? 'bg-indigo-600' : 'text-slate-500 hover:text-slate-300'}`}>
+          <button onClick={() => setActiveTab('wardrobe')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'wardrobe' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
             <Shirt size={20} />
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'profile' ? 'bg-indigo-600' : 'text-slate-500 hover:text-slate-300'}`}>
+          <button onClick={() => setActiveTab('profile')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'profile' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
             <User size={20} />
           </button>
         </div>
