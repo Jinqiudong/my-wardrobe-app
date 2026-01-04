@@ -4,17 +4,25 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // --- 内部 Firebase 初始化逻辑 ---
-// 为了解决编译路径问题，我们将配置直接放在 App 组件同级
 const getEnv = (key) => {
   try {
-    // 兼容不同的环境读取方式
-    return import.meta.env[`VITE_${key}`] || import.meta.env[key] || "";
+    // 关键修复：Vite 环境下，只有以 VITE_ 开头的变量会被暴露给客户端
+    // 我们优先读取带 VITE_ 前缀的变量
+    const viteKey = `VITE_${key}`;
+    const value = import.meta.env[viteKey] || import.meta.env[key];
+
+    // 如果值是空的，或者包含占位符文本，则返回空字符串
+    if (!value || value.includes('你的_') || value.includes('YOUR_')) {
+      return "";
+    }
+    return value;
   } catch (e) {
     return "";
   }
 };
 
 const firebaseConfig = {
+  // 此时 getEnv('FIREBASE_API_KEY') 会去查找 VITE_FIREBASE_API_KEY
   apiKey: getEnv('FIREBASE_API_KEY'),
   authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
   projectId: getEnv('FIREBASE_PROJECT_ID'),
@@ -23,7 +31,7 @@ const firebaseConfig = {
   appId: getEnv('FIREBASE_APP_ID')
 };
 
-// 检查 Firebase 配置是否可用
+// 只有当 apiKey 存在且不是默认占位符时，才认为配置有效
 const isFirebaseValid = !!firebaseConfig.apiKey;
 
 export default function App() {
@@ -32,7 +40,6 @@ export default function App() {
   useEffect(() => {
     if (isFirebaseValid) {
       try {
-        // 初始化 Firebase 防止重复初始化
         if (getApps().length === 0) {
           initializeApp(firebaseConfig);
         }
@@ -42,7 +49,7 @@ export default function App() {
         setStatus('❌ 初始化失败');
       }
     } else {
-      setStatus('⚠️ 缺少 Firebase Key');
+      setStatus('⚠️ 未检测到配置');
     }
   }, []);
 
@@ -74,9 +81,19 @@ export default function App() {
           </div>
         </div>
 
-        {/* 说明文字 */}
+        {/* 详细诊断提示 */}
+        {!isFirebaseValid && (
+          <div className="max-w-xs mx-auto mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl">
+            <p className="text-[10px] text-yellow-200/60 leading-relaxed text-left">
+              <strong>排查指南：</strong><br />
+              1. 请确保 Vercel 上的变量名是以 <code className="text-white">VITE_</code> 开头的（例如：VITE_FIREBASE_API_KEY）。<br />
+              2. 修改 Vercel 变量后，必须<strong>重新部署 (Redeploy)</strong> 才能生效。
+            </p>
+          </div>
+        )}
+
         <p className="text-slate-500 text-[10px] max-w-[200px] mx-auto leading-relaxed opacity-60">
-          核心模块已整合，路径解析错误已修复。现在可以开始构建您的智能衣橱。
+          核心模块已整合。已修正 Vite 环境变量前缀逻辑，确保部署后可正常连接。
         </p>
       </div>
     </div>
