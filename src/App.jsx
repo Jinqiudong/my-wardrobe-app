@@ -3,11 +3,9 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, query, limit } from 'firebase/firestore';
 import {
-  CloudSun, Loader2, Shirt, X,
-  MessageSquare, Settings, Send, MapPin,
-  Wind, Droplets, Sun, CloudRain,
-  Thermometer, LayoutGrid, ChevronDown, ChevronUp,
-  Sparkles, User, Plus, Search, Filter
+  CloudSun, Shirt, MessageSquare, Send,
+  BrainCircuit, Zap, User, Plus, Sparkles, Loader2,
+  Navigation, Ruler, Wind
 } from 'lucide-react';
 
 // --- 环境与配置获取 ---
