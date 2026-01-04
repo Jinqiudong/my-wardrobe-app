@@ -1,27 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, limit } from 'firebase/firestore';
 import {
-  CloudSun, Shirt, MessageSquare, Send,
-  BrainCircuit, Zap, User, Plus, Sparkles, Loader2,
-  Navigation, Ruler, Wind
+  CloudSun, Loader2, Shirt, X,
+  MessageSquare, Settings, Send, MapPin,
+  Wind, Droplets, Sun, CloudRain,
+  Thermometer, LayoutGrid, ChevronDown, ChevronUp,
+  Sparkles, User, Plus, Search, Filter
 } from 'lucide-react';
 
-// --- 环境配置与初始化 ---
+// --- 环境与配置获取 ---
 const getEnv = (key) => {
   try {
+    const viteVar = import.meta.env[`VITE_${key}`];
+    if (viteVar) return viteVar;
     if (typeof window !== 'undefined' && window[key]) return window[key];
     return typeof __app_id !== 'undefined' ? (key === '__app_id' ? __app_id : (key === '__firebase_config' ? __firebase_config : (key === '__initial_auth_token' ? __initial_auth_token : ""))) : "";
   } catch (e) { return ""; }
 };
 
-const apiKey = ""; // 运行时由环境提供
+const apiKey = getEnv('GEMINI_API_KEY');
 const firebaseConfigStr = getEnv('__firebase_config');
-const firebaseConfig = firebaseConfigStr ? JSON.parse(firebaseConfigStr) : {};
-const appId = getEnv('__app_id') || 'aura-integrated-agent';
+const firebaseConfig = firebaseConfigStr ? JSON.parse(firebaseConfigStr) : {
+  apiKey: getEnv('FIREBASE_API_KEY'),
+  authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnv('FIREBASE_PROJECT_ID'),
+  storageBucket: getEnv('FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getEnv('FIREBASE_APP_ID')
+};
+const appId = getEnv('__app_id') || firebaseConfig.projectId || 'aura-ai-closet';
 
-// 初始化 Firebase (单文件内完成)
+// 初始化 Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -51,8 +62,6 @@ const useIntegratedWeather = () => {
       }
     });
   }, []);
-  return data;
-};
 
 // --- 主应用组件 ---
 export default function App() {
