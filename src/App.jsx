@@ -79,6 +79,9 @@ const playVoice = async (text) => {
         model: "gemini-2.5-flash-preview-tts"
       })
     });
+
+    if (!response.ok) throw new Error('TTS Network response was not ok');
+
     const result = await response.json();
     const base64Data = result.candidates[0].content.parts[0].inlineData.data;
     const binaryString = window.atob(base64Data);
@@ -90,7 +93,9 @@ const playVoice = async (text) => {
     const wavBlob = pcmToWav(bytes, 24000);
     const audioUrl = URL.createObjectURL(wavBlob);
     const audio = new Audio(audioUrl);
-    audio.play();
+
+    // Web Audio Policy: Play often needs user interaction or a clean promise handling
+    await audio.play();
   } catch (e) {
     console.error("TTS Error:", e);
   }
@@ -114,7 +119,7 @@ const useIntegratedWeather = () => {
           temp,
           condition: cond,
           loading: false,
-          report: `[Weather Agent]: 坐标(${latitude.toFixed(2)}), 气温${temp}度, 天气${cond}。建议穿搭参考当前气象条件。`
+          report: `[Weather Agent]: 坐标(${latitude.toFixed(2)}), 气温${temp}度, 天气${cond}。`
         });
       } catch (e) {
         setData(prev => ({ ...prev, loading: false, report: '无法获取实时天气。' }));
@@ -135,9 +140,10 @@ export default function App() {
   ]);
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
+
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
-  const inputMsgRef = useRef(''); // 用于语音结束后的实时引用
+  const inputMsgRef = useRef('');
 
   const weatherAgent = useIntegratedWeather();
 
@@ -150,7 +156,7 @@ export default function App() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
+      recognitionRef.current.continuous = false; // 改为单次，更符合手机操作逻辑
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'zh-CN';
 
@@ -164,13 +170,18 @@ export default function App() {
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
-        // 自动发送并清空
+        // 自动发送机制
         if (inputMsgRef.current.trim()) {
-          handleSend(inputMsgRef.current);
+          const finalMsg = inputMsgRef.current;
+          setInputMsg('');
+          handleSend(finalMsg);
         }
       };
 
-      recognitionRef.current.onerror = () => setIsListening(false);
+      recognitionRef.current.onerror = (e) => {
+        console.error("Speech Error", e);
+        setIsListening(false);
+      };
     }
   }, []);
 
@@ -205,16 +216,10 @@ export default function App() {
 
   const askAura = async (userInput) => {
     setIsAiTyping(true);
-    const wardrobeReport = `[Wardrobe Agent]: 用户的衣橱里有 ${wardrobe.length} 件单品。`;
-
     const systemInstruction = `你是一个多智能体调度大脑 AURA。
-    当前 Agent 状态：
-    1. ${weatherAgent.report}
-    2. ${wardrobeReport}
-
-    任务规则：
-    - 请使用分段、列表和 Markdown 格式回复。
-    - 回复要优雅、时尚。`;
+    当前状态：${weatherAgent.report}
+    衣橱：${wardrobe.length} 件单品。
+    请简洁、专业地回复。`;
 
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -235,10 +240,10 @@ export default function App() {
   };
 
   const handleSend = async (overrideText) => {
-    const text = overrideText || inputMsg;
+    const text = typeof overrideText === 'string' ? overrideText : inputMsg;
     if (!text.trim() || isAiTyping) return;
 
-    setInputMsg(''); // 立即清空输入框
+    setInputMsg('');
     setMessages(prev => [...prev, { role: 'user', text }]);
 
     const aiRes = await askAura(text);
@@ -246,9 +251,7 @@ export default function App() {
   };
 
   const toggleVoiceInput = () => {
-    if (!recognitionRef.current) {
-      return;
-    }
+    if (!recognitionRef.current) return;
     if (isListening) {
       recognitionRef.current.stop();
     } else {
@@ -260,98 +263,102 @@ export default function App() {
 
   return (
     <div className="h-screen bg-[#020617] text-white flex flex-col font-sans selection:bg-indigo-500/30 overflow-hidden">
-      <header className="px-6 py-6 flex justify-between items-center max-w-2xl mx-auto w-full border-b border-white/5 flex-shrink-0">
+      {/* Header - Fixed Height */}
+      <header className="px-6 py-4 flex justify-between items-center max-w-2xl mx-auto w-full border-b border-white/5 flex-shrink-0 z-50 bg-[#020617]/80 backdrop-blur-lg">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.4)]">
-            <BrainCircuit size={20} />
+          <div className="p-2 bg-indigo-600 rounded-xl">
+            <BrainCircuit size={18} />
           </div>
           <div>
-            <h1 className="text-lg font-black italic tracking-tighter uppercase">Aura Core</h1>
-            <p className="text-[8px] text-indigo-400 font-bold uppercase tracking-[0.2em] text-left">Integrated Agent OS</p>
+            <h1 className="text-md font-black italic tracking-tighter uppercase">Aura Core</h1>
+            <p className="text-[7px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Agent OS</p>
           </div>
         </div>
 
         <div className="flex gap-2">
           <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/10">
-            <div className={`w-1.5 h-1.5 rounded-full ${weatherAgent.loading ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
-            <span className="text-[9px] font-bold text-slate-400">WX-01</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/10">
-            <div className={`w-1.5 h-1.5 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-[9px] font-bold text-slate-400">WD-02</span>
+            <div className={`w-1 h-1 rounded-full ${weatherAgent.loading ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+            <span className="text-[8px] font-bold text-slate-400">WEATHER</span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-6 max-w-2xl mx-auto w-full flex flex-col min-h-0 relative">
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-2xl mx-auto w-full flex flex-col min-h-0 relative overflow-hidden px-4">
         {activeTab === 'chat' && (
-          <div className="flex flex-col h-full py-4 min-h-0">
-            <div className="grid grid-cols-2 gap-3 mb-4 flex-shrink-0">
-                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-                    <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                        <CloudSun size={14} />
-                        <span className="text-[10px] font-black uppercase">Climate</span>
+          <div className="flex flex-col h-full py-4 relative">
+            {/* Quick Status Bar */}
+            <div className="grid grid-cols-2 gap-2 mb-4 flex-shrink-0">
+                <div className="p-3 bg-white/5 border border-white/10 rounded-xl">
+                    <div className="flex items-center gap-2 text-indigo-400 mb-0.5">
+                        <CloudSun size={12} />
+                        <span className="text-[8px] font-black uppercase">Climate</span>
                     </div>
-                    <p className="text-sm font-bold">{weatherAgent.temp}°C · {weatherAgent.condition}</p>
+                    <p className="text-xs font-bold">{weatherAgent.temp}°C · {weatherAgent.condition}</p>
                 </div>
-                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-                    <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                        <Shirt size={14} />
-                        <span className="text-[10px] font-black uppercase">Closet</span>
+                <div className="p-3 bg-white/5 border border-white/10 rounded-xl">
+                    <div className="flex items-center gap-2 text-indigo-400 mb-0.5">
+                        <Shirt size={12} />
+                        <span className="text-[8px] font-black uppercase">Closet</span>
                     </div>
-                    <p className="text-sm font-bold">{wardrobe.length} Items Sync'd</p>
+                    <p className="text-xs font-bold">{wardrobe.length} Items</p>
                 </div>
             </div>
 
+            {/* Messages - Scrollable with clear bottom padding for inputs */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto space-y-6 pr-1 custom-scrollbar scroll-smooth pb-32"
+              className="flex-1 overflow-y-auto space-y-6 pr-1 custom-scrollbar scroll-smooth pb-44"
             >
               {messages.map((m, i) => (
                 <div key={i} className={`flex flex-col ${m.role === 'ai' ? 'items-start' : 'items-end'}`}>
-                  <div className={`max-w-[92%] p-5 rounded-3xl text-sm leading-relaxed whitespace-pre-wrap ${
-                    m.role === 'ai' ? 'bg-white/5 text-slate-200 border border-white/10 rounded-tl-none' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 rounded-tr-none'
+                  <div className={`max-w-[88%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    m.role === 'ai' ? 'bg-white/5 text-slate-200 border border-white/10 rounded-tl-none' : 'bg-indigo-600 text-white shadow-lg rounded-tr-none'
                   }`}>
                     {m.text}
                     {m.role === 'ai' && (
                       <button
                         onClick={() => playVoice(m.text)}
-                        className="mt-3 flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-tighter bg-white/5 px-2 py-1 rounded-md hover:bg-white/10 transition-colors"
+                        className="mt-3 flex items-center gap-2 text-[9px] font-bold text-indigo-400 uppercase tracking-tighter bg-white/10 px-3 py-1.5 rounded-full active:scale-95 transition-all"
                       >
-                        <Volume2 size={12} /> 朗读回复
+                        <Volume2 size={12} /> 点击朗读
                       </button>
                     )}
                   </div>
                 </div>
               ))}
               {isAiTyping && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 rounded-full w-fit animate-pulse border border-indigo-500/20">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 rounded-full w-fit animate-pulse border border-indigo-500/20">
                     <Zap size={10} className="text-indigo-400" />
-                    <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Orchestrating...</span>
+                    <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest">AURA IS THINKING...</span>
                 </div>
               )}
-              <div className="h-4" />
             </div>
 
-            <div className="absolute bottom-28 left-0 right-0 px-6 z-10">
-              <div className="flex gap-2 max-w-2xl mx-auto">
+            {/* Input Floating Dock - Higher Z-index and safe position */}
+            <div className="absolute bottom-[90px] left-0 right-0 z-40 px-2">
+              <div className="flex gap-2 max-w-2xl mx-auto items-end">
                 <div className="relative flex-1">
-                  <input
+                  <textarea
+                    rows="1"
                     value={inputMsg}
                     onChange={e => setInputMsg(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSend()}
-                    placeholder={isListening ? "Listening..." : "输入指令..."}
-                    className={`w-full bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl py-6 pl-8 pr-16 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl ${isListening ? 'ring-2 ring-indigo-500 animate-pulse' : ''}`}
+                    onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
+                    placeholder={isListening ? "正在倾听..." : "输入指令..."}
+                    className={`w-full bg-slate-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl py-4 pl-5 pr-14 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl resize-none max-h-32 ${isListening ? 'ring-2 ring-indigo-500' : ''}`}
                   />
-                  <button onClick={() => handleSend()} className="absolute right-3 top-2.5 p-3.5 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
-                    <Send size={18} />
+                  <button
+                    onClick={() => handleSend()}
+                    className="absolute right-2.5 bottom-2 p-2.5 bg-indigo-600 rounded-xl hover:bg-indigo-500 active:scale-90 transition-all"
+                  >
+                    <Send size={16} />
                   </button>
                 </div>
                 <button
                   onClick={toggleVoiceInput}
-                  className={`p-5 rounded-3xl border transition-all ${isListening ? 'bg-red-500 border-red-400 animate-pulse' : 'bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10'}`}
+                  className={`p-4 rounded-2xl border transition-all active:scale-90 flex-shrink-0 ${isListening ? 'bg-red-500 border-red-400' : 'bg-white/5 border-white/10 text-indigo-400'}`}
                 >
-                  {isListening ? <StopCircle size={24} /> : <Mic size={24} />}
+                  {isListening ? <StopCircle size={22} className="animate-pulse" /> : <Mic size={22} />}
                 </button>
               </div>
             </div>
@@ -359,17 +366,17 @@ export default function App() {
         )}
 
         {activeTab === 'wardrobe' && (
-          <div className="h-full py-6 pb-32 space-y-4 overflow-y-auto custom-scrollbar">
+          <div className="h-full py-6 pb-40 space-y-4 overflow-y-auto custom-scrollbar">
              <div className="flex justify-between items-end mb-4">
-                <h2 className="text-2xl font-black italic tracking-tighter uppercase">Vault</h2>
-                <button className="p-3 bg-white/5 border border-white/10 rounded-xl"><Plus size={20}/></button>
+                <h2 className="text-xl font-black italic tracking-tighter uppercase">Wardrobe Vault</h2>
+                <button className="p-3 bg-white/5 border border-white/10 rounded-xl"><Plus size={18}/></button>
              </div>
-             <div className="grid grid-cols-2 gap-4">
+             <div className="grid grid-cols-2 gap-3">
                 {wardrobe.map(item => (
-                   <div key={item.id} className="aspect-[3/4] bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative group">
+                   <div key={item.id} className="aspect-[4/5] bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative group">
                       {item.imageUrl && <img src={item.imageUrl} className="w-full h-full object-cover opacity-80" alt={item.name} />}
-                      <div className="absolute bottom-4 left-4 right-4">
-                         <p className="text-[10px] font-black uppercase bg-black/40 backdrop-blur-md px-2 py-1 rounded w-fit">{item.name}</p>
+                      <div className="absolute bottom-3 left-3 right-3">
+                         <p className="text-[9px] font-bold uppercase bg-black/60 backdrop-blur-md px-2 py-1 rounded w-fit">{item.name}</p>
                       </div>
                    </div>
                 ))}
@@ -378,24 +385,39 @@ export default function App() {
         )}
       </main>
 
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xs px-4 z-[60]">
-        <div className="bg-slate-900/95 backdrop-blur-3xl border border-white/10 p-2 rounded-full flex justify-between shadow-2xl">
-          <button onClick={() => setActiveTab('chat')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-            <MessageSquare size={20} />
+      {/* Global Navigation Tab Bar - Fixed Bottom */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-xs px-6 z-[100]">
+        <div className="bg-slate-900/95 backdrop-blur-3xl border border-white/10 p-1.5 rounded-full flex justify-around shadow-2xl shadow-indigo-500/10">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-3.5 flex flex-col items-center rounded-full transition-all ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <MessageSquare size={18} />
           </button>
-          <button onClick={() => setActiveTab('wardrobe')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'wardrobe' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-            <Shirt size={20} />
+          <button
+            onClick={() => setActiveTab('wardrobe')}
+            className={`flex-1 py-3.5 flex flex-col items-center rounded-full transition-all ${activeTab === 'wardrobe' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Shirt size={18} />
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'profile' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-            <User size={20} />
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex-1 py-3.5 flex flex-col items-center rounded-full transition-all ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <User size={18} />
           </button>
         </div>
       </nav>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        /* 避免手机端键盘弹出导致的布局破坏 */
+        @media (max-height: 500px) {
+          nav { display: none; }
+          .pb-44 { padding-bottom: 100px; }
+        }
       `}} />
     </div>
   );
