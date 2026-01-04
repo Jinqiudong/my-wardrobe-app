@@ -5,32 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Wardrobe AI</title>
 
-    <!-- 引入 Tailwind CSS CDN (开发测试用，生产环境构建时 Vite 会自动处理) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- 全局样式定制 -->
     <style>
-      :root {
-        color-scheme: dark;
-      }
+      :root { color-scheme: dark; }
       body {
         margin: 0;
         background-color: #020617;
         -webkit-tap-highlight-color: transparent;
-      }
-      /* 防止移动端回弹效果导致背景色穿帮 */
-      html, body {
         height: 100%;
         overflow: hidden;
       }
-      #root {
-        height: 100%;
-        overflow-y: auto;
-      }
+      #root { height: 100%; overflow-y: auto; }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./main.jsx"></script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
