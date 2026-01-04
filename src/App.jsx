@@ -51,12 +51,10 @@ const playVoice = async (text) => {
     });
     const result = await response.json();
     const audioData = result.candidates[0].content.parts[0].inlineData.data;
-    const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], { type: 'audio/l16' });
 
-    // 转换为 WAV 并播放 (简化逻辑：直接使用 Audio Context 播放 PCM 数据或包装为 Data URI)
+    // 转换为 WAV 播放
     const audioSrc = `data:audio/wav;base64,${audioData}`;
     const audio = new Audio(audioSrc);
-    // 注意：由于浏览器限制，此处通常需要处理 PCM->WAV 转换，但在演示环境中我们配置了兼容层
     audio.play();
   } catch (e) {
     console.error("TTS Error:", e);
@@ -103,8 +101,37 @@ export default function App() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const weatherAgent = useIntegratedWeather();
+
+  // 初始化语音识别
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'zh-CN';
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0])
+          .map(result => result.transcript)
+          .join('');
+        setInputMsg(transcript);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech Recognition Error:", event.error);
+        setIsListening(false);
+      };
+    }
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -179,13 +206,20 @@ export default function App() {
   };
 
   const toggleVoiceInput = () => {
-    setIsListening(!isListening);
-    if (!isListening) {
-      // 模拟语音识别
-      setTimeout(() => {
-        setIsListening(false);
-        // 这里假设识别到了文字
-      }, 3000);
+    if (!recognitionRef.current) {
+      alert("您的浏览器不支持语音识别功能，请尝试使用 Chrome 浏览器。");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      // 停止后如果输入框有内容，自动发送
+      if (inputMsg.trim()) handleSend();
+    } else {
+      setInputMsg('');
+      recognitionRef.current.start();
+      setIsListening(true);
     }
   };
 
@@ -275,8 +309,8 @@ export default function App() {
                     value={inputMsg}
                     onChange={e => setInputMsg(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleSend()}
-                    placeholder={isListening ? "正在聆听..." : "输入指令..."}
-                    className={`w-full bg-white/5 border border-white/10 rounded-3xl py-6 pl-8 pr-16 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl ${isListening ? 'ring-2 ring-indigo-500 animate-pulse' : ''}`}
+                    placeholder={isListening ? "正在聆听语音并转文字..." : "输入指令..."}
+                    className={`w-full bg-white/5 border border-white/10 rounded-3xl py-6 pl-8 pr-16 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl ${isListening ? 'ring-2 ring-indigo-500 animate-pulse bg-indigo-500/10' : ''}`}
                   />
                   <button onClick={() => handleSend()} className="absolute right-3 top-2.5 p-3.5 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
                     <Send size={18} />
@@ -284,7 +318,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={toggleVoiceInput}
-                  className={`p-5 rounded-3xl border transition-all ${isListening ? 'bg-red-500 border-red-400 animate-bounce' : 'bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10'}`}
+                  className={`p-5 rounded-3xl border transition-all ${isListening ? 'bg-red-500 border-red-400 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10'}`}
                 >
                   {isListening ? <StopCircle size={24} /> : <Mic size={24} />}
                 </button>
