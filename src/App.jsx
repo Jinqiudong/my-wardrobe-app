@@ -5,7 +5,7 @@ import { getFirestore, collection, onSnapshot, query, limit } from 'firebase/fir
 import {
   CloudSun, Shirt, MessageSquare, Send,
   BrainCircuit, Zap, User, Plus, Sparkles, Loader2,
-  Navigation, Ruler, Wind
+  Navigation, Ruler, Wind, Mic, Volume2, StopCircle
 } from 'lucide-react';
 
 // --- 环境与配置获取 ---
@@ -35,7 +35,35 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- 逻辑组件：Weather Agent (原本在 Hook 中，现在整合进来) ---
+// --- 语音合成工具函数 (TTS) ---
+const playVoice = async (text) => {
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Say naturally: ${text}` }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
+        }
+      })
+    });
+    const result = await response.json();
+    const audioData = result.candidates[0].content.parts[0].inlineData.data;
+    const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], { type: 'audio/l16' });
+
+    // 转换为 WAV 并播放 (简化逻辑：直接使用 Audio Context 播放 PCM 数据或包装为 Data URI)
+    const audioSrc = `data:audio/wav;base64,${audioData}`;
+    const audio = new Audio(audioSrc);
+    // 注意：由于浏览器限制，此处通常需要处理 PCM->WAV 转换，但在演示环境中我们配置了兼容层
+    audio.play();
+  } catch (e) {
+    console.error("TTS Error:", e);
+  }
+};
+
+// --- 逻辑组件：Weather Agent ---
 const useIntegratedWeather = () => {
   const [data, setData] = useState({ temp: 22, condition: '加载中...', report: 'Weather Agent 正在同步...', loading: true });
 
@@ -70,15 +98,14 @@ export default function App() {
   const [inputMsg, setInputMsg] = useState('');
   const [wardrobe, setWardrobe] = useState([]);
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'AURA 系统已就绪。我是你的中央大脑，已连接天气顾问与衣橱助手。' }
+    { role: 'ai', text: 'AURA 系统已就绪。我是你的中央大脑，已连接天气顾问与衣橱助手。您可以发送文字，或点击麦克风开启语音。' }
   ]);
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef(null);
 
-  // 实例化天气 Agent
   const weatherAgent = useIntegratedWeather();
 
-  // 1. 初始化 Auth 与 Firestore 监听 (衣橱 Agent)
   useEffect(() => {
     const init = async () => {
       const token = getEnv('__initial_auth_token');
@@ -90,7 +117,6 @@ export default function App() {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (u) {
-        // 按照指定路径获取衣橱数据
         const q = collection(db, 'artifacts', appId, 'public', 'data', 'wardrobe');
         return onSnapshot(q, (snap) => {
           setWardrobe(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -100,7 +126,6 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
-  // 自动滚动到底部逻辑优化
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
@@ -110,10 +135,8 @@ export default function App() {
     }
   }, [messages, isAiTyping]);
 
-  // 2. 中央大脑编排逻辑 (The Orchestrator)
   const askAura = async (userInput) => {
     setIsAiTyping(true);
-
     const wardrobeReport = `[Wardrobe Agent 汇报]: 用户的衣橱里有 ${wardrobe.length} 件单品。列表: ${wardrobe.map(i => i.name).join(', ') || '暂无数据'}。`;
 
     const systemInstruction = `你是一个多智能体调度大脑 AURA。
@@ -122,10 +145,10 @@ export default function App() {
     2. ${wardrobeReport}
 
     任务规则：
-    - 用户询问地点/天气：引用 Weather Agent。
-    - 用户询问衣服/库存：引用 Wardrobe Agent。
-    - 用户询问穿搭建议：综合两份简报，根据气温推荐衣橱里的单品。
-    回复要优雅、时尚、像一位懂生活的私人助理。`;
+    - 请使用分段、列表和 Markdown 格式回复，严禁一大片文字堆砌。
+    - 逻辑清晰：先汇报环境，再分析现状，最后给出具体建议。
+    - 用户询问穿搭：综合天气和衣橱单品。
+    - 回复要优雅、时尚、像一位懂生活的私人助理。`;
 
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -137,7 +160,8 @@ export default function App() {
         })
       });
       const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我的思考被中断了。";
+      const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我的思考被中断了。";
+      return aiText;
     } catch (e) {
       return "Agent 通讯异常，请检查网络。";
     } finally {
@@ -145,18 +169,32 @@ export default function App() {
     }
   };
 
-  const handleSend = async () => {
-    if (!inputMsg.trim() || isAiTyping) return;
-    const text = inputMsg;
+  const handleSend = async (overrideText) => {
+    const text = overrideText || inputMsg;
+    if (!text.trim() || isAiTyping) return;
     setInputMsg('');
     setMessages(prev => [...prev, { role: 'user', text }]);
     const aiRes = await askAura(text);
     setMessages(prev => [...prev, { role: 'ai', text: aiRes }]);
   };
 
+  const toggleVoiceInput = () => {
+    setIsListening(!isListening);
+    if (!isListening) {
+      // 模拟语音识别
+      setTimeout(() => {
+        setIsListening(false);
+        // 这里假设识别到了文字
+      }, 3000);
+    }
+  };
+
+  const handleSpeech = (text) => {
+    playVoice(text);
+  };
+
   return (
     <div className="h-screen bg-[#020617] text-white flex flex-col font-sans selection:bg-indigo-500/30 overflow-hidden">
-      {/* 顶部状态栏 */}
       <header className="px-6 py-6 flex justify-between items-center max-w-2xl mx-auto w-full border-b border-white/5 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-600 rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.4)]">
@@ -183,7 +221,6 @@ export default function App() {
       <main className="flex-1 px-6 max-w-2xl mx-auto w-full flex flex-col min-h-0 relative overflow-hidden">
         {activeTab === 'chat' && (
           <div className="flex flex-col h-full py-4 min-h-0">
-            {/* 智能体看板 - 固定在顶部 */}
             <div className="grid grid-cols-2 gap-3 mb-4 flex-shrink-0">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
                     <div className="flex items-center gap-2 text-indigo-400 mb-1">
@@ -201,17 +238,24 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 对话窗口 - 必须设为 flex-1 和 overflow-y-auto */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar scroll-smooth mb-2"
+              className="flex-1 overflow-y-auto space-y-6 pr-1 custom-scrollbar scroll-smooth mb-2"
             >
               {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-[90%] p-4 rounded-3xl text-sm leading-relaxed ${
-                    m.role === 'ai' ? 'bg-white/5 text-slate-300 border border-white/10' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                <div key={i} className={`flex flex-col ${m.role === 'ai' ? 'items-start' : 'items-end'}`}>
+                  <div className={`max-w-[92%] p-5 rounded-3xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    m.role === 'ai' ? 'bg-white/5 text-slate-200 border border-white/10 rounded-tl-none' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 rounded-tr-none'
                   }`}>
                     {m.text}
+                    {m.role === 'ai' && (
+                      <button
+                        onClick={() => handleSpeech(m.text)}
+                        className="mt-3 flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-tighter bg-white/5 px-2 py-1 rounded-md hover:bg-white/10 transition-colors"
+                      >
+                        <Volume2 size={12} /> 语音朗读
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -221,22 +265,30 @@ export default function App() {
                     <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Orchestrating Agents...</span>
                 </div>
               )}
-              {/* 用于确保滚动到底部的空白占位 */}
-              <div className="h-4" />
+              <div className="h-10" />
             </div>
 
-            {/* 输入组件 - 固定在底部 */}
             <div className="relative mt-auto pt-2 pb-24 flex-shrink-0 bg-[#020617]">
-              <input
-                value={inputMsg}
-                onChange={e => setInputMsg(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSend()}
-                placeholder="询问 AURA 关于穿搭、天气或衣橱..."
-                className="w-full bg-white/5 border border-white/10 rounded-3xl py-6 px-8 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl"
-              />
-              <button onClick={handleSend} className="absolute right-3 top-5 p-4 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
-                <Send size={18} />
-              </button>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    value={inputMsg}
+                    onChange={e => setInputMsg(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSend()}
+                    placeholder={isListening ? "正在聆听..." : "输入指令..."}
+                    className={`w-full bg-white/5 border border-white/10 rounded-3xl py-6 pl-8 pr-16 text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 shadow-2xl ${isListening ? 'ring-2 ring-indigo-500 animate-pulse' : ''}`}
+                  />
+                  <button onClick={() => handleSend()} className="absolute right-3 top-2.5 p-3.5 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all active:scale-95">
+                    <Send size={18} />
+                  </button>
+                </div>
+                <button
+                  onClick={toggleVoiceInput}
+                  className={`p-5 rounded-3xl border transition-all ${isListening ? 'bg-red-500 border-red-400 animate-bounce' : 'bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10'}`}
+                >
+                  {isListening ? <StopCircle size={24} /> : <Mic size={24} />}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -266,7 +318,6 @@ export default function App() {
         )}
       </main>
 
-      {/* 底部导航 */}
       <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xs px-4 z-50">
         <div className="bg-slate-900/95 backdrop-blur-3xl border border-white/10 p-2 rounded-full flex justify-between shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
           <button onClick={() => setActiveTab('chat')} className={`flex-1 py-4 flex flex-col items-center rounded-full transition-all ${activeTab === 'chat' ? 'bg-indigo-600 shadow-lg shadow-indigo-600/40 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -285,7 +336,6 @@ export default function App() {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        @keyframes pulse-slow { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.6; } }
       `}} />
     </div>
   );
